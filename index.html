@@ -1,0 +1,734 @@
+<!--
+
+————————————————————————————————————————————————————————————————————————————————————————————————————
+
+											BY:Cool Man
+
+————————————————————————————————————————————————————————————————————————————————————————————————————
+
+
+START AT 20141230-21:50
+-----------------------
+0.4V
+-基本架構 CSS佈局、生成元素、左右下移動
+-----------------------
+END  AT  20141231-00:35
+
+
+START AT 20141231-00:35
+-----------------------
+0.8V
+-基本架構 旋轉系統、堆疊判斷、消除判斷、遊戲結束判斷
+-----------------------
+END  AT  20150103-00:50
+
+
+START AT 20150106-05:00
+-----------------------
+0.9V
+-增加功能 遊戲暫停、下個模型顯示、暫存模型功能
+-----------------------
+END  AT  20150106-10:30
+
+
+————————————————————————————————————————————————————————————————————————————————————————————————————
+
+
+-->
+<html>
+ <head>
+  <meta http-equiv="content-type" content="html/text" charset="utf-8" />
+  <title>俄羅斯方塊</title>
+  <style>
+
+	body {
+		margin:0px;
+		padding:0px;
+		background-color:rgba(0,0,0,0.8);
+	}
+	
+	#next,#save {
+		margin:100px;
+		width:108px;
+		font-size:36px;
+		text-align:center;
+		color:rgba(255,255,255,0.8);
+	}
+	
+	#next .unit,#save .unit {
+		background-color:rgba(255,255,255,0.5);
+	}
+	
+	#game_body {
+		position:fixed;
+		margin:25% 50%;
+		height:auto;
+		background-color:rgba(255,255,255,0.5);
+	}
+	
+	.unit {
+		float:left;
+		width:25px;
+		height:25px;
+		border:1px solid black;
+	}
+	
+	#pause {
+		position:fixed;
+		margin:25% 0%;
+		padding:10px 0px;
+		top:-46px;
+		font-size:72px;
+		background-color:rgba(0,0,0,0.8);
+		color:rgba(255,255,255,0.8);
+		text-align:center;
+	}
+
+  </style>
+  <script>
+
+	h = 20;
+	w = 10;
+	/*
+	while(h==0 || w==0)
+	{
+		alert("請輸入遊戲地圖大小");
+		w = parseInt(prompt("遊戲地圖寬度：",10));
+		h = parseInt(prompt("遊戲地圖高度：",20));
+	}
+	*/
+	saved = "off";		//	存取模式 (是否已使用存取功能)
+	save = null;		//	存取模型 (默認空，無存取任何模型)
+	time = 1000;		//	模型自動向下移動的delay時間(ms)
+	pause = 0;			//	是否按下暫停(0為非，1為真)
+	s = 27;				//	size 每個格的大小(25+2)2為border(邊框，左右各一)
+	map = new Array();	//	遊戲畫布
+	obj_color = ["lightblue","blue","yellow","lightyellow","green","purple","red"];	//	模型顏色
+	
+	//	模型形狀，隨著 w (遊戲寬度) 進行對應調整
+	obj_shape = [[w+3,w+4,w+5,w+6],
+				 [4,w+4,w+5,w+6],
+				 [6,w+4,w+5,w+6],
+				 [4,5,w+4,w+5],
+				 [5,6,w+4,w+5],
+				 [5,w+4,w+5,w+6],
+				 [4,5,w+5,w+6]];
+	
+	//	下一個模型形狀對應位置
+	next_shape = [[4,5,6,7],
+				  [4,8,9,10],
+				  [6,8,9,10],
+				  [5,6,9,10],
+				  [5,6,8,9],
+				  [5,8,9,10],
+				  [4,5,9,10]];
+	
+	//	基本設置函數
+	function base_setting()
+	{
+		//	遊戲畫布居中
+		document.getElementById("game_body").style.width = w*s;
+		document.getElementById("game_body").style.top  = "-"+(h*s/2);
+		document.getElementById("game_body").style.left = "-"+(w*s/2);
+		
+		//	初始化 遊戲畫面為空
+		for(var i=0;i<h*w;i++)
+			map[i] = 0;
+		
+		//	隨機建立一個物件(模型)
+		build_obj(parseInt(Math.random()*7));
+		//	預約(delay)自動下降函數，time = 1000ms = 1s
+		setTimeout("auto_down();",time);
+	}
+	
+	//	自動下降函數
+	function auto_down(type)
+	{
+		var temp_arr = new Array();		//	暫存模型
+		var flag = 0;					//	固定當前物件旗標-檢測向下移動後，是否存在物件/已經到底部 (1為成立，0為不成立)
+		
+		for(var i=0;i<4;i++)
+			temp_arr[i] = now_obj[i];	//	將現有模型賦值給暫存模型
+		
+		for(var i=0;i<4;i++)
+		{
+			temp_arr[i]+=w;		//	模擬暫存(現有)模型向下移動(w = 一行的長度)
+			
+			//	呼叫快速檢測地圖，回傳值為 0 時(傳入位置已存在物件)，將固定當前物件旗標設置為真
+			if(f_check_map(temp_arr[i])==0)
+				flag = 1;
+			//	暫存模型位置大於遊戲畫布(已經到達遊戲畫布最底部)，將固定當前物件旗標設置為真
+			else if(temp_arr[i]>=h*w)
+				flag = 1;
+		}
+		
+		//	當固定當前物件旗標為真時，執行以下程式碼
+		if(flag==1)
+		{
+			//	將目前的模型固定化
+			for(var i=0;i<4;i++)
+				map[now_obj[i]] = 1;
+			
+			//	當非手動按下，↓鍵時(大概是防止一些bug)，執行以下程式碼
+			if(type!="move down")
+			{
+				clearTimeout(obj_moving);
+				obj_moving = setTimeout("auto_down();",time);
+			}
+			
+			//	呼叫物件刷新函數(更新模型位置)
+			obj_refresh();
+			//	呼叫物件建立函數(建立新的模型)
+			build_obj(next);
+			//	呼叫檢測消除函數(是否可消除)
+			check_remove();
+			return ;	//	退出函數
+		}
+		else
+		{
+			//	當非手動按下，↓鍵時(大概是防止一些bug)，呼叫物件清除函數
+			if(type!="move down")
+				obj_clear();
+			
+			//	更新目前模型位置數據(一般自動向下移動的情況)
+			now_obj = temp_arr;
+			obj_xy+=w;
+			
+			//	當非手動按下，↓鍵時(大概是防止一些bug)，執行以下程式碼
+			if(type!="move down")
+			{
+				obj_refresh();									//	呼叫物件更新函數
+				obj_moving = setTimeout("auto_down();",time);	//	將預約 auto_down() 賦值給 obj_moving (用於遊戲暫停時，可以取消自動執行)
+			}
+		}
+	}
+	
+	//	檢測消除函數(是否存在一行可消除)
+	function check_remove()
+	{
+		//	迴圈從最底層開始
+		for(var i=h-1;i>=0;i--)
+		{
+			var flag = w;	//	一行的格數(flag為0時，此行可消除)
+			//	迴圈從最後一列開始
+			for(var j=w-1;j>=0;j--)
+				if(map[i*w+j]==1)	//	對應位置為1(物件/阻礙物)
+				{
+					flag-=1;
+					
+					//	當 flag 為0時(此行可消除)，執行以下程式碼
+					if(flag==0)
+					{
+						obj_remove(i*w+w-1);	//	呼叫物件消除函數，並且將對應位置傳入
+						i+=1;					//	對檢測位置進行調整(重新判斷此行是否可消除，因為此行消除之後上面(若存在)物件往下跌)
+					}
+				}
+				else	//	不滿足消除條件，直接進行下一行判斷(加快運算？)
+					break ;
+		}
+	}
+	
+	//	物件消除函數(開始位置)
+	function obj_remove(start)
+	{
+		//	一直循環至到遊戲畫布頂部(預留第一行)
+		while(start>=0+w)
+		{
+			var flag = 1;	//	下降旗標-(當前位置的背景顏色是否可以下降(除了目前模型，消除行以上都往下降))
+			//	判斷此行的上一格是否就是目前模型的其中一個格
+			for(var i=0;i<4;i++)
+				if(start-w==now_obj[i])
+					flag = 0;
+			if(flag)	//	更新對應位置的背景顏色 (顯示物件往下降)
+				document.getElementById("unit_"+start).style.backgroundColor = document.getElementById("unit_"+(start-w)).style.backgroundColor;
+			
+			map[start] = map[start-w];	//	更新遊戲畫布數據 (物件往下降)
+			
+			start-=1;	//	進行下一格處理
+		}
+	}
+	
+	//	移動函數(對應按鍵執行對應處理)
+	function move()
+	{
+		var kc = event.keyCode;		//	將鍵盤按鍵代號賦值給 kc 變數
+		var temp_arr = new Array();	//	暫存模型的陣列（用於存取目前模型）
+	//	alert(kc);
+		for(var i=0;i<4;i++)
+			temp_arr[i] = now_obj[i];	//	將目前模型對應位置賦值給暫存陣列
+		
+		obj_clear();	//	呼叫物件清除函數(預先清除目前模型位置的背景顏色，之後進行按鍵對應處理過後，呼叫物件刷新函數進行更新目前模型位置之對應背景顏色)
+		
+		//	遊戲不處於暫停狀態時，執行以下程式區塊
+		if(pause==0)
+		{
+			//	← 
+			if(kc==37)
+			{
+				//	物件已經靠左時，呼叫物件刷新函數
+				if(get_left_side()%w==0)
+					obj_refresh();
+				else
+				{
+					//	對暫存模型進行向左位移
+					for(var i=0;i<4;i++)
+						temp_arr[i]-=1;
+					//	呼叫檢測地圖函數，並且傳入暫存模型為參數回傳值為真時(位移後的位置不能存在物件(不能穿透物件))，執行以下程式碼
+					if(check_map(temp_arr))
+					{
+						now_obj = temp_arr;	//	更新目前模型
+						obj_xy-=1;			//	更新目前模型的 xy 軸
+					}
+				}
+			}
+			//	→
+			else if(kc==39)
+			{
+				//	物件已經靠右時，呼叫物件刷新函數
+				if(get_right_side()%w==w-1)
+					obj_refresh();
+				else
+				{
+					//	對暫存模型進行向右位移
+					for(var i=0;i<4;i++)
+						temp_arr[i] = temp_arr[i]+1;
+					//	呼叫檢測地圖函數，並且傳入暫存模型為參數回傳值為真時(位移後的位置不能存在物件(不能穿透物件))，執行以下程式碼
+					if(check_map(temp_arr))
+					{
+						now_obj = temp_arr;	//	更新目前模型
+						obj_xy+=1;			//	更新目前模型的 xy 軸
+					}
+				}
+			}
+			//	↓
+			else if(kc==40)
+				auto_down("move down");	//	呼叫自動下降函數，並且傳入 "move down" 參數，進行特別處理
+			//	↑ ENTER
+			else if(kc==13 || kc==38)
+			{
+				//	旋轉的第一個模型(一)進行特別處理
+				if(obj_type==0)
+				{
+					//	物件狀態(第一個模型(一)是否已旋轉過，0為還未旋轉)
+					if(obj_status==0)
+					{
+						if(now_obj[0]>=h*w-w-w)
+							obj_refresh();
+						
+						//	橫行旋轉演算法
+						temp_arr[0] = now_obj[0]-w+1;
+						temp_arr[1] = now_obj[1];
+						temp_arr[2] = now_obj[1]+w;
+						temp_arr[3] = now_obj[1]+w*2;
+						
+						//	呼叫檢測地圖函數，並且回傳值為真時(不能卡著物件進行旋轉)，執行以下程式碼
+						if(check_map(temp_arr))
+						{
+							now_obj = temp_arr;	//	更新目前模型
+							obj_status = 1;		//	設置物件狀態為 1(已使用旋轉，模型(一)為(|))
+						}
+					}
+					else
+					{
+						var revise = 0;	//	用於修正偏差值
+						
+						//	靠左邊或右邊時，進行賦值對應偏差值
+						if(get_left_side()==0)
+							revise = 1;
+						else if(get_right_side()==8)
+							revise = -1;
+						else if(get_right_side()==9)
+							revise = -2;
+						
+						//	直立旋轉演算法
+						var num = now_obj[1];
+						temp_arr[0] = now_obj[0]+w-1+revise;
+						temp_arr[1] = num+revise;
+						temp_arr[2] = num+1+revise;
+						temp_arr[3] = num+2+revise;
+						
+						//	呼叫檢測地圖函數，並且回傳值為真時(不能卡著物件進行旋轉)，執行以下程式碼
+						if(check_map(temp_arr))
+						{
+							now_obj = temp_arr;	//	更新目前模型
+							obj_status = 0;		//	設置物件狀態為 0(已使用旋轉，模型(|)為(一))
+						}
+					}
+				}
+				//	當物件類型不等於三(不是正方形)時，呼叫物件旋轉函數
+				else if(obj_type!=3)
+					obj_turn(obj_xy);	//	呼叫物件旋轉函數，並且傳入物件的 xy 軸(位置)
+			}
+			//	SPACE
+			else if(kc==32)
+			{
+				var run_time = 0;	//	無實際作用(可能用於調試)
+				
+				while(1)
+				{
+					for(var i=0;i<4;i++)
+						temp_arr[i]+=w;		//	暫存模型向下移動
+					
+					//	檢測地圖回傳 0 時，將暫存模型往上回升(暫存模型底下存有物件)，並且跳出 while 迴圈
+					if(check_map(temp_arr)==0)
+					{
+						for(var i=0;i<4;i++)
+							temp_arr[i]-=w;
+						break ;
+					}
+					//	暫存模型已經到達底部，跳出 while 迴圈
+					else if(temp_arr[3]>=h*w-w)
+						break ;
+					
+					run_time+=1;
+				}
+				//	更新遊戲畫布數據
+				for(var i=0;i<4;i++)
+					map[temp_arr[i]] = 1;
+				
+				now_obj = temp_arr;	//	將暫存模型賦值給目前模型(將移動底部的暫存模型賦值給目前模型)
+				obj_refresh();		//	呼叫物件刷新函數
+				build_obj(next);	//	建立下一個模型
+				check_remove();		//	呼叫檢測消除函數
+			}
+			//	SHIFT CTRL
+			else if((kc==16 || kc==17) && saved!="on")
+			{
+				save_obj();	//	呼叫存取物件函數
+			}
+		}
+		//	PAUSE
+		if(kc==80)
+		{
+			//	遊戲非暫停狀態，進行暫停相關處理
+			if(pause==0)
+			{
+				var element = document.createElement("div");		//	創建一個 div 標籤元素，並且賦值給 element 變數
+				element.id = "pause";								
+				element.innerHTML = "GAME PAUSE";
+				element.style.width = document.body.clientWidth;
+				document.body.appendChild(element);					//	在頁面主體創建元素
+				clearTimeout(obj_moving);							//	清除預約 (取消自動執行 auto_down())
+				pause = 1;											//	將遊戲狀態設置為暫停
+			}
+			else
+			{
+				//	除去子標籤
+				document.getElementById("html_body").removeChild(document.getElementById("pause"));
+				document.body.onkeydown = move;		//	定義在頁面按下按鍵會套用 move 函數
+				auto_down();	//	重新呼叫自動下降函數
+				pause = 0;		//	將遊戲狀態設置為非暫停
+			}
+		}
+		
+		obj_refresh();	//	進過對應按鍵處理之後，呼叫物件刷新函數(更新遊戲畫布畫面)
+	}
+	
+	//	物件清除函數
+	function obj_clear()
+	{
+		//	當超出遊戲畫布時，退出函數(預防bug)
+		for(var i=0;i<4;i++)
+			if(now_obj[i]>=h*w)
+				return ;
+		//	清空目前模型位置的背景顏色
+		for(var i=0;i<4;i++)
+			document.getElementById("unit_"+now_obj[i]).style.backgroundColor = "";
+	}
+	
+	//	物件刷新函數
+	function obj_refresh()
+	{
+		//	當超出遊戲畫布時，退出函數(預防bug)
+		for(var i=0;i<4;i++)
+			if(now_obj[i]>=h*w)
+				return ;
+		//	顯示目前模型位置的背景顏色
+		for(var i=0;i<4;i++)
+			document.getElementById("unit_"+now_obj[i]).style.backgroundColor = obj_color[obj_type];
+	}
+	
+	//	獲取靠左函數
+	function get_left_side()
+	{
+		var num = now_obj[0]%w;
+		
+		for(var i=1;i<4;i++)
+			if(num>now_obj[i]%w)
+				num = now_obj[i]%w;
+		return num;
+	}
+	
+	//	獲取靠右函數
+	function get_right_side()
+	{
+		var num = now_obj[0]%w;
+		
+		for(var i=1;i<4;i++)
+			if(num<now_obj[i]%w)
+				num = now_obj[i]%w;
+		return num;
+	}
+	
+	//	獲取靠下函數
+	function get_down_side()
+	{
+		var num = now_obj[0];
+		
+		for(var i=1;i<4;i++)
+			if(num<now_obj[i])
+				num = now_obj[i];
+		return num;
+	}
+	
+	//	快速檢測地圖(num=位置)
+	function f_check_map(num)
+	{
+		//	當對應位置存在物件(阻礙物)時，回傳0 否則回傳1
+		if(map[num]==1)
+			return 0;
+		else
+			return 1;
+	}
+	
+	//	檢測地圖(arr=模型)
+	function check_map(arr)
+	{
+		var flag = 1;	//	阻礙物旗標-模型對應位置是否存在物件(阻礙物)， 0為存在，1為不存在
+		
+		//	檢測模型對應位置是否存在物件(阻礙物)
+		for(var i=0;i<arr.length;i++)
+			if(map[arr[i]]==1)
+				flag = 0;
+		//	回傳阻礙物旗標
+		return flag;
+	}
+	
+	//	物件旋轉函數(num = xy 軸位置)
+	function obj_turn(num)
+	{
+		//	temp_arr=九宮格xy軸(目前模型)，flag_arr=九宮格中0為空1為物件，turn_arr=flag_arr旋轉之後，t_xy_arr=旋轉之後物件(模型)xy軸
+		var temp_arr = new Array(9);	//	暫存陣列(九宮格格式，標識其對應位置)
+		var flag_arr = new Array(9);	//	旗標陣列(九宮格格式，標識其是否為空或是物件)
+		var turn_arr = new Array(9);	//	旋轉陣列(九宮格格式，標識其旗標旋轉後)
+		var t_xy_arr = new Array(9);	//	位移陣列(進過旋轉之後，模型 xy 軸的位置)
+		var flag = 1;					//	旋轉合法旗標(0為不合法旋轉 1為合法旋轉)
+		
+		//	對 temp_arr(暫存陣列)初始化為以 num 為起始點之隨後的xy軸，flag_arr(旗標陣列)進行初始化為0(空)
+		for(var i=0;i<9;i++)
+		{
+			temp_arr[i] = num;
+			flag_arr[i] = 0;
+			
+			//	到達九宮格的最後一列，讓 num 換去下一行，並且減去兩列
+			if(i%3==2)
+				num+=w-2;
+			else
+				num++;	//	換去下一列
+		}
+		
+		//	找出目前模型的位置並且，將其在 flag_arr(旗標陣列) 中，以 1 標識出來
+		for(var i=0;i<4;i++)
+			for(var j=0;j<9;j++)
+				if(now_obj[i]==temp_arr[j])
+					flag_arr[j] = 1;
+		
+		//	旋轉演算法	
+		turn_arr[0] = flag_arr[6];
+		turn_arr[1] = flag_arr[3];
+		turn_arr[2] = flag_arr[0];
+		turn_arr[3] = flag_arr[7];
+		turn_arr[4] = flag_arr[4];
+		turn_arr[5] = flag_arr[1];
+		turn_arr[6] = flag_arr[8];
+		turn_arr[7] = flag_arr[5];
+		turn_arr[8] = flag_arr[2];
+
+		t_xy_arr = new Array(4);	//	位移陣列(進過旋轉之後，模型 xy 軸的位置)
+		var index = 0;				//	位移陣列的對應索引值
+		
+		//	旋轉之後的位置賦值給 t_xy_arr(位移陣列) 對應的索引位置
+		for(var i=0;i<9;i++)
+		{
+			if(turn_arr[i]==1)
+			{
+				t_xy_arr[index] = temp_arr[i];
+				
+				//	旋轉之後的位置有物件擋著，設置旋轉合法旗標為0
+				if(f_check_map(temp_arr[i])==0)
+					flag = 0;
+				
+				index++;
+			}
+		}
+		
+		var s = t_xy_arr[0]%w;
+		var b = t_xy_arr[0]%w;
+		var t_h = t_xy_arr[0];
+		var diff = w-1;
+		var l = 0;
+		var r = 0;
+		
+		for(var i=1;i<4;i++)
+		{
+			if(s>t_xy_arr[i]%w)
+				s = t_xy_arr[i]%w;
+			if(b<t_xy_arr[i]%w)
+				b = t_xy_arr[i]%w;
+			if(t_h<t_xy_arr[i])
+				t_h = t_xy_arr[i];
+		}
+		
+		if(b-s==diff)
+		{			
+			for(var i=0;i<4;i++)
+				if(now_obj[i]%w<=2)
+					l++;
+				else	
+					r++;
+					
+			if(l>r)
+			{
+				for(var i=0;i<4;i++)
+					t_xy_arr[i]+=1;
+					
+				obj_xy+=1;
+			}
+			else
+			{
+				for(var i=0;i<4;i++)
+					t_xy_arr[i]-=1;
+					
+				obj_xy-=1;
+			}
+		}
+		if(t_h>=h*w)
+		{
+			for(var i=0;i<4;i++)
+				t_xy_arr[i]-=w;
+			obj_xy-=w;
+		}
+		
+		//	當旋轉合法旗標不合法時，退出函數，否則將 t_xy_arr(位移陣列)賦值給目前模型
+		if(flag==0)
+			return ;
+		else
+			now_obj = t_xy_arr;
+	}
+	
+	//	建立物件函數(type = 模型類型(亂數決定))
+	function build_obj(type)
+	{
+		now_obj = obj_shape[type];	//	取得對應模型格式，並且賦值給目前模型
+		obj_type = type;			//	存取目前模型類型
+		obj_status = 0;				//	物件狀態(用於第一個模型(一)的旋轉狀態特別處理)
+		obj_xy = 4;					//	物件目前位置(開始點默認為4)
+		
+		//	呼叫檢測地圖，並且傳入目前模型作為參數，回傳值為真時(生成的目前模型下一格可移動)，執行以下程式碼
+		if(check_map(now_obj))
+			for(var i=0;i<4;i++)
+				document.getElementById("unit_"+obj_shape[type][i]).style.backgroundColor = obj_color[type];	//	設置對應模型格式的背景顏色(生成目前模型)
+		//	生成位置下一格存在物件(阻礙物)(遊戲畫布疊滿)，呼叫遊戲結束函數
+		else
+			game_over();
+		
+		//	當存取模式為 "off" 時(非使用存取(讀取)模型建立物件)，執行以下程式碼
+		if(saved=="off")
+		{
+			
+			next = parseInt(Math.random()*7);	//	隨機(亂數)生成下一個模型代號
+			show(next,"next");					//	在下一個模型面板顯示下一個模型
+		}
+		//	將存取模式設置為 "off" (未使用存取功能)
+		saved = "off";
+	}
+	
+	//	存取物件函數(參數-沒用到= =？)
+	function save_obj(type)
+	{
+		//	save 變數初始化時，為空(存取模型面板是空的)
+		if(save==null)
+		{
+			save = obj_type;	//	將目前的模型賦值給存取模型
+			show(save,"save");	//	顯示存取模型
+			build_obj(next);	//	建立下一個模型(第一次使用存取功能)
+			saved = "on";		//	將存取模式設置為 "on" (已使用存取功能)
+		}
+		//	saved 變數值為 "off" 時(避免無限制存取模型，每次存取時，設置 saved 為 "on")，執行以下程式碼
+		else if(saved=="off")
+		{
+			var temp = obj_type;	//	宣告一個暫存模型(用於存取目前的模型)
+			
+			saved = "on";			//	將存取模式設置為 "on"(因為建立物件函數內會判斷saved為"off"時，自動更新下一個出現的模型)
+			build_obj(save);		//	建立上次存取的模型
+			save = temp;			//	將暫存模型賦值給存取模型
+			show(temp,"save");		//	更新存取面板的模型
+			saved = "on";			//	再次將存取模式設置為 "on"(呼叫建立物件函數會賦值 saved 為 "off")
+		}
+	}
+	
+	//	顯示函數(模型類型，格式(next / save))
+	function show(num,type)
+	{
+		//	清空面板(設置背景為空)
+		for(var i=0;i<12;i++)
+			document.getElementById(type+"_unit_"+i).style.backgroundColor = "rgba(255,255,255,0.5)";
+		
+		//	顯示對應格式與模型
+		for(var i=0;i<4;i++)
+			document.getElementById(type+"_unit_"+next_shape[num][i]).style.backgroundColor = obj_color[num];
+	}
+	
+	//	遊戲結束函數
+	function game_over()
+	{
+		alert("GAME OVER!!!");
+		
+		if(confirm("重新開始遊戲？"))
+			history.go(0);
+		else
+		{
+			clearTimeout(obj_moving);
+			document.body.onkeydown = "";
+		}
+	}
+
+  </script>
+ </head>
+ <body id="html_body" onLoad="base_setting()" onkeydown="move()">
+
+  <div id="next">
+   NEXT
+   <div id="content">
+    <script>
+	
+	for(var i=0;i<12;i++)
+		document.write("<div id='next_unit_"+i+"' class='unit'></div>");
+	
+	</script>
+   </div>
+  </div>
+  
+  <div id="save">
+   SAVE
+   <div id="content">
+    <script>
+	
+	for(var i=0;i<12;i++)
+		document.write("<div id='save_unit_"+i+"' class='unit'></div>");
+	
+	</script>
+   </div>
+  </div>
+  
+  <div id="game_body">
+   <script>
+
+	for(var i=0;i<h*w;i++)
+		document.write("<div id='unit_"+i+"' class='unit'></div>");
+
+   </script>
+  </div>
+
+ </body>
+</html>
